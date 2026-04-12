@@ -4,50 +4,70 @@ from datetime import datetime
 
 sched = importlib.import_module('schedule')
 
-from fetch import fetch_stock_data
-from clean import clean_data
-from store import store_data
+from fetch import fetch_current_batch, fetch_all_stocks
+from clean import clean_batch
+from store import store_batch
+from config import STOCK_BATCHES, ALL_SYMBOLS, FETCH_INTERVAL
 
-SYMBOL   = "AAPL"
-INTERVAL = 5
+batch_index = 0
+
 
 def run_pipeline():
-    print("\n" + "=" * 45)
-    print(f"  PIPELINE STARTED — {datetime.now()}")
-    print("=" * 45)
+    global batch_index
+    current_batch = STOCK_BATCHES[batch_index % len(STOCK_BATCHES)]
+
+    print("\n" + "=" * 55)
+    print(f"  PIPELINE — {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"  Batch {batch_index % len(STOCK_BATCHES) + 1}/{len(STOCK_BATCHES)}: {current_batch}")
+    print("=" * 55)
 
     try:
-        print("\n[Step 1] Fetching data...")
-        raw = fetch_stock_data()
-        print("         Fetch complete.")
+        print("\n[Step 1] Fetching...")
+        raw_data = fetch_current_batch(batch_index)
 
-        print("\n[Step 2] Cleaning data...")
-        cleaned = clean_data(raw)
-        print("         Clean complete.")
+        print("\n[Step 2] Cleaning...")
+        cleaned_data = clean_batch(raw_data)
 
-        print("\n[Step 3] Storing data...")
-        store_data(cleaned)
-        print("         Store complete.")
+        print("\n[Step 3] Storing...")
+        store_batch(cleaned_data)
 
-        print(f"\n  Pipeline finished successfully!")
-        print(f"  Next run in {INTERVAL} minutes.")
-        print("=" * 45)
+        print(f"\n  Done! Next batch in {FETCH_INTERVAL} minutes.")
+        print("=" * 55)
 
     except Exception as e:
-        print(f"\n  ERROR in pipeline: {e}")
-        print("  Will retry next cycle.")
-        print("=" * 45)
+        print(f"\n  ERROR: {e}")
+        print("=" * 55)
 
-print("=" * 45)
-print("  FINANCE SCHEDULER STARTED")
-print(f"  Running every {INTERVAL} minutes")
-print(f"  Stock: {SYMBOL}")
-print(f"  Started at: {datetime.now()}")
-print("=" * 45)
+    batch_index += 1
 
-run_pipeline()
 
-sched.every(INTERVAL).minutes.do(run_pipeline)
+def initial_load():
+    print("\n" + "=" * 55)
+    print("  INITIAL LOAD — Fetching all 16 assets...")
+    print("=" * 55)
+    try:
+        raw_data     = fetch_all_stocks()
+        cleaned_data = clean_batch(raw_data)
+        store_batch(cleaned_data)
+        print(f"\n  Initial load complete — {len(cleaned_data)} symbols loaded!")
+    except Exception as e:
+        print(f"  ERROR: {e}")
+
+
+print("\n" + "=" * 55)
+print("  FINANCE PIPELINE v2.0")
+print(f"  Assets  : {len(ALL_SYMBOLS)} across 4 classes")
+print(f"  Batches : {len(STOCK_BATCHES)} batches of 4 symbols")
+print(f"  Interval: every {FETCH_INTERVAL} minutes")
+print(f"  Started : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+print("=" * 55)
+
+initial_load()
+
+sched.every(FETCH_INTERVAL).minutes.do(run_pipeline)
+
+print(f"\n  Scheduler live — next batch in {FETCH_INTERVAL} minutes...")
+print("  Press Ctrl+C to stop.\n")
 
 while True:
     sched.run_pending()
