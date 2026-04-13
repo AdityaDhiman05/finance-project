@@ -3,7 +3,10 @@ from flask_cors import CORS
 from sqlalchemy import create_engine, text
 import pandas as pd
 import pymysql
-from insights import get_insights, get_all_insights
+from insights import (
+    get_insights, get_all_insights,
+    get_summary, get_all_summaries
+)
 from config import DB_USER, DB_PASSWORD, DB_HOST, DB_NAME, ALL_SYMBOLS
 
 app = Flask(__name__)
@@ -11,33 +14,35 @@ CORS(app)
 
 
 def get_engine():
+    from urllib.parse import quote_plus
+    encoded = quote_plus(DB_PASSWORD)
     return create_engine(
-        "mysql+pymysql://",
-        creator=lambda: pymysql.connect(
-            host     = DB_HOST,
-            user     = DB_USER,
-            password = DB_PASSWORD,
-            database = DB_NAME
-        )
+        f"mysql+pymysql://{DB_USER}:{encoded}@{DB_HOST}/{DB_NAME}"
     )
 
 
+# ─── Home ────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({
         "status"   : "running",
         "message"  : "Finance Analytics API v2.0",
+        "version"  : "2.0",
         "symbols"  : ALL_SYMBOLS,
         "endpoints": {
-            "symbols"        : "/symbols",
-            "raw data"       : "/get-data?symbol=AAPL",
-            "analytics"      : "/analytics?symbol=AAPL",
-            "single insight" : "/insights?symbol=AAPL",
-            "all insights"   : "/all-insights"
+            "home"          : "/",
+            "symbols"       : "/symbols",
+            "raw data"      : "/get-data?symbol=AAPL",
+            "analytics"     : "/analytics?symbol=AAPL",
+            "insights"      : "/insights?symbol=AAPL",
+            "all insights"  : "/all-insights",
+            "summary"       : "/summary?symbol=AAPL",
+            "all summaries" : "/all-summaries",
         }
     })
 
 
+# ─── Symbols ─────────────────────────────────────────────────
 @app.route("/symbols", methods=["GET"])
 def get_symbols():
     return jsonify({
@@ -47,6 +52,7 @@ def get_symbols():
     })
 
 
+# ─── Raw Data ────────────────────────────────────────────────
 @app.route("/get-data", methods=["GET"])
 def get_data():
     symbol = request.args.get("symbol", "AAPL").upper()
@@ -72,6 +78,7 @@ def get_data():
     })
 
 
+# ─── Analytics ───────────────────────────────────────────────
 @app.route("/analytics", methods=["GET"])
 def analytics():
     symbol = request.args.get("symbol", "AAPL").upper()
@@ -99,16 +106,15 @@ def analytics():
     })
 
 
+# ─── Basic Insights ──────────────────────────────────────────
 @app.route("/insights", methods=["GET"])
 def insights():
     symbol = request.args.get("symbol", "AAPL").upper()
     result = get_insights(symbol)
-    return jsonify({
-        "status"   : "success",
-        "insights" : result
-    })
+    return jsonify({"status": "success", "insights": result})
 
 
+# ─── All Basic Insights ──────────────────────────────────────
 @app.route("/all-insights", methods=["GET"])
 def all_insights():
     results = get_all_insights()
@@ -119,13 +125,46 @@ def all_insights():
     })
 
 
+# ─── Full Summary (MA + RSI + Bollinger + Volume) ────────────
+@app.route("/summary", methods=["GET"])
+def summary():
+    """
+    Full technical analysis for one symbol.
+    Returns MA5, MA20, trend, RSI, Bollinger Bands,
+    volume spike detection and price alert in one response.
+    """
+    symbol = request.args.get("symbol", "AAPL").upper()
+    result = get_summary(symbol)
+    return jsonify({"status": "success", "summary": result})
+
+
+# ─── All Summaries ───────────────────────────────────────────
+@app.route("/all-summaries", methods=["GET"])
+def all_summaries():
+    """
+    Full technical analysis for ALL 16 symbols at once.
+    This is the main endpoint for Chahat's dashboard.
+    """
+    results = get_all_summaries()
+    return jsonify({
+        "status"    : "success",
+        "count"     : len(results),
+        "summaries" : results
+    })
+
+
 if __name__ == "__main__":
     print("\n" + "=" * 50)
     print("  Finance Analytics API v2.0")
     print(f"  Tracking {len(ALL_SYMBOLS)} assets")
-    print("\n  http://127.0.0.1:5000/")
-    print("  http://127.0.0.1:5000/all-insights")
+    print("\n  Endpoints:")
+    print("  http://127.0.0.1:5000/")
+    print("  http://127.0.0.1:5000/symbols")
+    print("  http://127.0.0.1:5000/get-data?symbol=AAPL")
+    print("  http://127.0.0.1:5000/analytics?symbol=AAPL")
     print("  http://127.0.0.1:5000/insights?symbol=AAPL")
-    print("  http://127.0.0.1:5000/get-data?symbol=BTC/USD")
+    print("  http://127.0.0.1:5000/all-insights")
+    print("  http://127.0.0.1:5000/summary?symbol=AAPL")
+    print("  http://127.0.0.1:5000/all-summaries")
     print("=" * 50 + "\n")
     app.run(debug=True, port=5000)
